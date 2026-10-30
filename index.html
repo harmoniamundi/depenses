@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dépenses">
+<meta name="color-scheme" content="light dark">
+<title>Dépenses</title>
+<style>
+  :root{
+    --bg:#f6f5f2; --card:#ffffff; --ink:#1c1b19; --muted:#7a766e; --line:#e4e1da;
+    --accent:#2f5d50; --accent-ink:#ffffff; --danger:#b3402f;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#141412; --card:#1e1e1b; --ink:#f0eee8; --muted:#9a968d; --line:#2e2d29;
+           --accent:#7fb8a4; --accent-ink:#10201a; --danger:#e07b66; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:17px/1.35 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+            max(28px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+    -webkit-text-size-adjust:100%;
+  }
+  main{max-width:480px;margin:0 auto}
+  .total{text-align:center;padding:18px 0 22px}
+  .total small{display:block;color:var(--muted);font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+  .total output{display:block;font-size:46px;font-weight:700;letter-spacing:-.02em;margin-top:2px;
+                font-variant-numeric:tabular-nums}
+  form{display:grid;grid-template-columns:1fr 112px;gap:10px;margin-bottom:10px}
+  input{
+    font:inherit; font-size:16px; color:var(--ink); background:var(--card);
+    border:1px solid var(--line); border-radius:12px; padding:13px 14px; width:100%; min-width:0;
+    -webkit-appearance:none; appearance:none;
+  }
+  input:focus{outline:2px solid var(--accent);outline-offset:0}
+  #montant{text-align:right;font-variant-numeric:tabular-nums}
+  button{font:inherit;cursor:pointer;border:0}
+  .add{
+    grid-column:1/-1; background:var(--accent); color:var(--accent-ink);
+    font-weight:600; padding:14px; border-radius:12px;
+  }
+  .add:active{opacity:.85}
+  .err{grid-column:1/-1;color:var(--danger);font-size:14px;margin:0}
+  ul{list-style:none;margin:16px 0 0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  li{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+  li:first-child{border-top:0}
+  .nom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nom span{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+  .som{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .del{background:none;color:var(--muted);font-size:22px;line-height:1;padding:6px 8px;border-radius:8px}
+  .del:active{color:var(--danger)}
+  .vide{color:var(--muted);text-align:center;padding:26px 14px}
+  footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:13px;gap:4px 12px}
+  .link{background:none;color:var(--muted);text-decoration:underline;font-size:13px;padding:6px 0;text-align:left}
+  .link.danger{color:var(--danger)}
+  .link.bad{color:var(--danger)}
+  .right{display:flex;gap:14px}
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:max(18px,env(safe-area-inset-bottom));
+    background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:14px;
+    display:flex;gap:14px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:5
+  }
+  .toast button{background:none;color:inherit;font-weight:700;text-decoration:underline;padding:0}
+  .veil{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+  .panel{
+    background:var(--card);width:100%;max-width:480px;border-radius:18px 18px 0 0;
+    padding:20px 18px max(22px,env(safe-area-inset-bottom));display:grid;gap:10px
+  }
+  .panel h2{margin:0 0 2px;font-size:18px}
+  .panel p{margin:0;color:var(--muted);font-size:14px}
+  .panel .row{display:flex;gap:10px;margin-top:4px}
+  .panel .row button{flex:1;padding:13px;border-radius:12px;font-weight:600}
+  .btn-main{background:var(--accent);color:var(--accent-ink)}
+  .btn-alt{background:var(--bg);color:var(--ink)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <section class="total" aria-live="polite">
+    <small>Total à ce jour</small>
+    <output id="total">0,00 €</output>
+  </section>
+
+  <form id="form" autocomplete="off">
+    <input id="nom" type="text" placeholder="Dépense" aria-label="Nom de la dépense" enterkeyhint="next" maxlength="80">
+    <input id="montant" type="text" inputmode="decimal" placeholder="0,00" aria-label="Somme en euros" enterkeyhint="done">
+    <p class="err" id="err" hidden></p>
+    <button class="add" type="submit">Ajouter</button>
+  </form>
+
+  <ul id="liste" aria-label="Dépenses"></ul>
+
+  <footer>
+    <button class="link" id="statut" type="button"></button>
+    <span class="right">
+      <button class="link" id="reglages" type="button">Synchro</button>
+      <button class="link danger" id="vider" type="button" hidden>Tout effacer</button>
+    </span>
+  </footer>
+</main>
+
+<div class="toast" id="toast" hidden><span id="toast-msg"></span><button id="toast-act" type="button"></button></div>
+
+<div class="veil" id="veil" hidden>
+  <form class="panel" id="cfgform" autocomplete="off">
+    <h2>Synchronisation GitHub</h2>
+    <p>Dépôt privé qui contiendra le fichier de données, au format <b>pseudo/nom-du-dépôt</b>.</p>
+    <input id="cfg-repo" type="text" placeholder="pseudo/depenses-data" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Dépôt de données">
+    <p>Jeton d’accès limité à ce seul dépôt (droit « Contents : Read and write »). Il reste dans cet appareil.</p>
+    <input id="cfg-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Jeton d’accès">
+    <p class="err" id="cfg-err" hidden></p>
+    <div class="row">
+      <button class="btn-alt" id="cfg-cancel" type="button">Fermer</button>
+      <button class="btn-main" type="submit">Enregistrer</button>
+    </div>
+    <button class="link danger" id="cfg-off" type="button" hidden>Désactiver la synchro sur cet appareil</button>
+  </form>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var LS_ITEMS = "depenses.gh.items.v1";
+  var LS_CFG   = "depenses.gh.cfg.v1";
+  var FILE     = "depenses.json";
+  var API      = "https://api.github.com/repos/";
+  var KEEP_TOMBSTONES_MS = 30 * 24 * 3600 * 1000;
+
+  // item : {id, nom, c (centimes), t (création), u (dernière modif.), d (true = supprimé)}
+  var items = [];
+  var cfg = null;                 // {repo, token}
+  var syncing = false, again = false, syncTimer = null;
+  var undoFn = null, toastTimer = null;
+  var statutKind = "local";       // local | ok | busy | offline | auth | repo | conflit | erreur
+
+  var $ = function(id){ return document.getElementById(id); };
+  var fmt  = new Intl.NumberFormat("fr-FR", {style:"currency", currency:"EUR"});
+  var dfmt = new Intl.DateTimeFormat("fr-FR", {day:"numeric", month:"short"});
+
+  /* ---------- stockage local ---------- */
+  function lsGet(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+  function lsDel(k){ try { localStorage.removeItem(k); } catch(e){} }
+  function saveLocal(){ lsSet(LS_ITEMS, items); }
+
+  /* ---------- fusion ---------- */
+  function merge(a, b){
+    var m = {}, now = Date.now();
+    a.concat(b).forEach(function(x){
+      var cur = m[x.id];
+      if (!cur || x.u > cur.u || (x.u === cur.u && x.d && !cur.d)) m[x.id] = x;
+    });
+    return Object.keys(m).map(function(k){ return m[k]; })
+      .filter(function(x){ return !(x.d && now - x.u > KEEP_TOMBSTONES_MS); });
+  }
+  function key(arr){
+    return JSON.stringify(arr.slice().sort(function(p, q){ return p.id < q.id ? -1 : p.id > q.id ? 1 : 0; })
+      .map(function(x){ return [x.id, x.nom, x.c, x.t, !!x.d, x.u]; }));
+  }
+  function clean(arr){
+    return (Array.isArray(arr) ? arr : []).filter(function(x){
+      return x && typeof x.id === "string" && typeof x.nom === "string" && Number.isFinite(x.c);
+    }).map(function(x){
+      var t = Number.isFinite(x.t) ? x.t : 0;
+      return {id:x.id, nom:x.nom, c:x.c, t:t, u:Number.isFinite(x.u) ? x.u : t, d:!!x.d};
+    });
+  }
+
+  /* ---------- API GitHub ---------- */
+  function b64enc(s){
+    var b = new TextEncoder().encode(s), r = "";
+    for (var i = 0; i < b.length; i++) r += String.fromCharCode(b[i]);
+    return btoa(r);
+  }
+  function b64dec(s){
+    var bin = atob(String(s).replace(/\s/g, "")), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(u);
+  }
+  function req(method, body){
+    var h = {
+      "Authorization": "Bearer " + cfg.token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+    if (body) h["Content-Type"] = "application/json";
+    return fetch(API + cfg.repo + "/contents/" + FILE, {
+      method: method, headers: h, cache: "no-store",
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
+  function fail(kind, status){ var e = new Error(kind); e.kind = kind; e.status = status; return e; }
+
+  async function ghGet(){
+    var r = await req("GET");
+    if (r.status === 404) return {items: [], sha: null};
+    if (r.status === 401 || r.status === 403) throw fail("auth", r.status);
+    if (!r.ok) throw fail("erreur", r.status);
+    var j = await r.json();
+    var data = JSON.parse(b64dec(j.content));
+    return {items: clean(data && data.items), sha: j.sha};
+  }
+  async function ghPut(list, sha){
+    var body = {
+      message: "Mise à jour " + new Date().toISOString(),
+      content: b64enc(JSON.stringify({v: 1, items: list}))
+    };
+    if (sha) body.sha = sha;
+    var r = await req("PUT", body);
+    if (r.status === 409 || r.status === 422) return "conflit";
+    if (r.status === 401 || r.status === 403) throw fail("auth", r.status);
+    if (r.status === 404) throw fail("repo", 404);
+    if (!r.ok) throw fail("erreur", r.status);
+    return "ok";
+  }
+
+  /* ---------- synchro ---------- */
+  function setStatut(kind){
+    statutKind = kind;
+    var txt = {
+      local:   "Enregistré sur cet appareil",
+      ok:      "Synchronisé ✓",
+      busy:    "Synchronisation…",
+      offline: "Hors ligne — modifications gardées ici",
+      auth:    "Jeton refusé — toucher pour corriger",
+      repo:    "Dépôt introuvable ou sans accès — toucher",
+      conflit: "Conflit — toucher pour réessayer",
+      erreur:  "Erreur GitHub — toucher pour réessayer"
+    }[kind];
+    var b = $("statut");
+    b.textContent = txt;
+    b.className = "link" + (kind === "auth" || kind === "repo" || kind === "erreur" ? " bad" : "");
+  }
+
+  function scheduleSync(){
+    if (!cfg) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(sync, 400);
+  }
+
+  async function sync(){
+    if (!cfg) return;
+    if (syncing){ again = true; return; }
+    syncing = true; setStatut("busy");
+    try {
+      var done = false;
+      for (var i = 0; i < 4 && !done; i++){
+        var remote = await ghGet();
+        items = merge(items, remote.items);
+        if (key(items) === key(remote.items)){ done = true; break; }
+        var res = await ghPut(items, remote.sha);
+        if (res === "ok") done = true;
+      }
+      saveLocal(); render();
+      setStatut(done ? "ok" : "conflit");
+    } catch(e){
+      saveLocal(); render();
+      if (e && e.kind) setStatut(e.kind);
+      else setStatut("offline");     // TypeError réseau, ou JSON illisible
+    } finally {
+      syncing = false;
+      if (again){ again = false; scheduleSync(); }
+    }
+  }
+
+  /* ---------- logique ---------- */
+  function live(){ return items.filter(function(x){ return !x.d; }); }
+
+  function parseMontant(s){
+    s = String(s).trim().replace(/\s/g, "").replace("€", "").replace(",", ".");
+    if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+    var n = Math.round(parseFloat(s) * 100);
+    return isFinite(n) ? n : null;
+  }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  function changed(){ saveLocal(); render(); scheduleSync(); }
+
+  function setDeleted(ids, flag){
+    var now = Date.now();
+    items = items.map(function(x){
+      return ids.indexOf(x.id) >= 0 ? {id:x.id, nom:x.nom, c:x.c, t:x.t, u:now, d:flag} : x;
+    });
+    changed();
+  }
+
+  function render(){
+    var l = live();
+    var total = l.reduce(function(a, x){ return a + x.c; }, 0);
+    $("total").textContent = fmt.format(total / 100);
+    var ul = $("liste");
+    ul.textContent = "";
+    if (!l.length){
+      var li0 = document.createElement("li");
+      li0.className = "vide"; li0.textContent = "Aucune dépense pour l’instant.";
+      ul.appendChild(li0);
+    } else {
+      l.slice().sort(function(p, q){ return q.t - p.t; }).forEach(function(x){
+        var li = document.createElement("li");
+        var nom = document.createElement("div"); nom.className = "nom";
+        nom.textContent = x.nom;
+        var d = document.createElement("span"); d.textContent = dfmt.format(new Date(x.t));
+        nom.appendChild(d);
+        var som = document.createElement("div"); som.className = "som";
+        som.textContent = fmt.format(x.c / 100);
+        var b = document.createElement("button");
+        b.className = "del"; b.type = "button"; b.setAttribute("aria-label", "Supprimer " + x.nom);
+        b.textContent = "×";
+        b.addEventListener("click", function(){
+          setDeleted([x.id], true);
+          toast("Dépense supprimée", "Annuler", function(){ setDeleted([x.id], false); });
+        });
+        li.appendChild(nom); li.appendChild(som); li.appendChild(b);
+        ul.appendChild(li);
+      });
+    }
+    $("vider").hidden = !l.length;
+  }
+
+  function showError(m){ var e = $("err"); e.textContent = m; e.hidden = !m; }
+
+  function toast(msg, label, fn){
+    $("toast-msg").textContent = msg;
+    $("toast-act").textContent = label;
+    undoFn = fn;
+    $("toast").hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ $("toast").hidden = true; undoFn = null; }, 6000);
+  }
+  $("toast-act").addEventListener("click", function(){
+    if (undoFn){ undoFn(); undoFn = null; }
+    $("toast").hidden = true; clearTimeout(toastTimer);
+  });
+
+  $("form").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var nom = $("nom").value.trim();
+    var c = parseMontant($("montant").value);
+    if (!nom){ showError("Donne un nom à la dépense."); $("nom").focus(); return; }
+    if (c === null){ showError("Somme invalide (ex. 12,50)."); $("montant").focus(); return; }
+    showError("");
+    var now = Date.now();
+    items = items.concat([{id: uid(), nom: nom, c: c, t: now, u: now, d: false}]);
+    $("nom").value = ""; $("montant").value = "";
+    changed();
+    $("nom").focus();
+  });
+
+  var armed = false, armTimer = null;
+  $("vider").addEventListener("click", function(){
+    var b = $("vider");
+    if (!armed){
+      armed = true; b.textContent = "Confirmer ?";
+      armTimer = setTimeout(function(){ armed = false; b.textContent = "Tout effacer"; }, 4000);
+      return;
+    }
+    clearTimeout(armTimer); armed = false; b.textContent = "Tout effacer";
+    var ids = live().map(function(x){ return x.id; });
+    setDeleted(ids, true);
+    toast("Liste effacée", "Annuler", function(){ setDeleted(ids, false); });
+  });
+
+  /* ---------- réglages ---------- */
+  function openCfg(msg){
+    $("cfg-repo").value = cfg ? cfg.repo : "";
+    $("cfg-token").value = "";
+    $("cfg-token").placeholder = cfg ? "(inchangé si laissé vide)" : "github_pat_…";
+    $("cfg-off").hidden = !cfg;
+    var e = $("cfg-err"); e.textContent = msg || ""; e.hidden = !msg;
+    $("veil").hidden = false;
+  }
+  function closeCfg(){ $("veil").hidden = true; }
+
+  $("reglages").addEventListener("click", function(){ openCfg(); });
+  $("cfg-cancel").addEventListener("click", closeCfg);
+  $("veil").addEventListener("click", function(ev){ if (ev.target === $("veil")) closeCfg(); });
+
+  $("cfgform").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var raw = $("cfg-repo").value.trim()
+      .replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+    var token = $("cfg-token").value.trim() || (cfg ? cfg.token : "");
+    var e = $("cfg-err");
+    if (!/^[\w.-]+\/[\w.-]+$/.test(raw)){ e.textContent = "Dépôt invalide : écris pseudo/nom-du-dépôt."; e.hidden = false; return; }
+    if (!token){ e.textContent = "Colle ton jeton d’accès."; e.hidden = false; return; }
+    cfg = {repo: raw, token: token};
+    lsSet(LS_CFG, cfg);
+    closeCfg();
+    sync();
+  });
+
+  $("cfg-off").addEventListener("click", function(){
+    cfg = null; lsDel(LS_CFG);
+    closeCfg(); setStatut("local");
+  });
+
+  $("statut").addEventListener("click", function(){
+    if (!cfg){ openCfg(); return; }
+    if (statutKind === "auth" || statutKind === "repo"){ openCfg(); return; }
+    sync();
+  });
+
+  window.addEventListener("online", scheduleSync);
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible") scheduleSync();
+  });
+
+  /* ---------- démarrage ---------- */
+  items = clean(lsGet(LS_ITEMS));
+  var c0 = lsGet(LS_CFG);
+  if (c0 && typeof c0.repo === "string" && typeof c0.token === "string") cfg = c0;
+  render();
+  setStatut("local");
+  if (cfg) sync();
+})();
+</script>
+</body>
+</html>
